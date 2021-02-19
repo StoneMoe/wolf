@@ -175,6 +175,7 @@ class User:
         if self.room.players[nick].status == PlayerStatus.PENDING_HEAL and \
                 self.room.guard_rule == GuardRule.MED_CONFLICT:
             self.room.players[nick].status = PlayerStatus.PENDING_DEAD
+            return
 
         self.room.players[nick].status = PlayerStatus.PENDING_GUARD
 
