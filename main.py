@@ -5,10 +5,11 @@ from logging import getLogger, basicConfig
 from pywebio import start_server
 from pywebio.input import *
 from pywebio.output import *
-from pywebio.session import defer_call
+from pywebio.session import defer_call, get_current_task_id
 
 from enums import WitchRule, GuardRule, Role, GameStage
-from models import Room, User
+from models.room import Room
+from models.user import User
 from utils import add_cancel_button
 
 basicConfig(stream=sys.stdout, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
@@ -24,7 +25,8 @@ async def main():
         await input('请输入你的昵称',
                     required=True,
                     validate=User.validate_nick,
-                    help_text='请使用一个易于分辨的名称')
+                    help_text='请使用一个易于分辨的名称'),
+        get_current_task_id()
     )
 
     @defer_call
@@ -77,7 +79,7 @@ async def main():
         # 玩家操作
         user_ops = []
         if room.started:
-            if room.stage == GameStage.WOLF and current_user.role in [Role.WOLF, Role.WOLF_KING]:
+            if room.stage == GameStage.WOLF and current_user.should_act():
                 user_ops = [
                     actions(
                         name='wolf_team_op',
@@ -85,7 +87,7 @@ async def main():
                         help_text='狼人阵营，请选择要击杀的对象。'
                     )
                 ]
-            if room.stage == GameStage.DETECTIVE and current_user.role == Role.DETECTIVE:
+            if room.stage == GameStage.DETECTIVE and current_user.should_act():
                 user_ops = [
                     actions(
                         name='detective_team_op',
@@ -93,7 +95,7 @@ async def main():
                         help_text='预言家，请选择要查验的对象。'
                     )
                 ]
-            if room.stage == GameStage.WITCH and current_user.role == Role.WITCH:
+            if room.stage == GameStage.WITCH and current_user.should_act():
                 if current_user.witch_has_heal():
                     current_user.send_msg(f'昨晚被杀的是 {room.list_pending_kill_players()}')
                 else:
@@ -107,7 +109,7 @@ async def main():
                         help_text='女巫，请选择你的操作。'
                     )
                 ]
-            if room.stage == GameStage.GUARD and current_user.role == Role.GUARD:
+            if room.stage == GameStage.GUARD and current_user.should_act():
                 user_ops = [
                     actions(
                         name='guard_team_op',
@@ -115,7 +117,7 @@ async def main():
                         help_text='守卫，请选择你的操作。'
                     )
                 ]
-            if room.stage == GameStage.HUNTER and current_user.role == Role.HUNTER:
+            if room.stage == GameStage.HUNTER and current_user.should_act():
                 current_user.hunter_gun_status()
 
         ops = host_ops + user_ops
@@ -123,8 +125,10 @@ async def main():
             continue
 
         # UI
-        with use_scope('UserControl'):
-            data = await input_group('操作', inputs=host_ops + user_ops, cancelable=True)
+        if host_ops + user_ops:
+            current_user.input_blocking = True
+        data = await input_group('操作', inputs=host_ops + user_ops, cancelable=True)
+        current_user.input_blocking = False
 
         # Canceled
         if data is None:
@@ -154,4 +158,4 @@ async def main():
 
 
 if __name__ == '__main__':
-    start_server(main, debug=False, port=80, cdn=False)
+    start_server(main, debug=False, host='0.0.0.0', port=80, cdn=False)

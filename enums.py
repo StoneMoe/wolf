@@ -2,6 +2,11 @@ from enum import Enum
 from typing import Union
 
 
+class LogCtrl(Enum):
+    """广播目标为 None 的，特殊控制消息类型枚举"""
+    RemoveInput = '移除当前输入框'
+
+
 class PlainEnum(Enum):
 
     def __repr__(self):
@@ -15,16 +20,17 @@ class PlayerStatus(PlainEnum):
     DEAD = '出局'
     PENDING_DEAD = '被狼人/女巫/守救冲突杀害'
     PENDING_HEAL = '被女巫解救'
+    PENDING_POISON = '被女巫毒害'
     PENDING_GUARD = '被守卫守护'
 
 
 class GameStage(Enum):
-    Day = 0
-    WOLF = 1
-    DETECTIVE = 2
-    WITCH = 3
-    GUARD = 4
-    HUNTER = 5
+    Day = 'Day'
+    WOLF = '狼人'
+    DETECTIVE = '预言家'
+    WITCH = '女巫'
+    GUARD = '守卫'
+    HUNTER = '猎人'
 
 
 class Role(PlainEnum):
