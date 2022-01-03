@@ -14,7 +14,7 @@ Preview
 
 TODO，欢迎PR
 --
-1. TTS 目前仅支持 macOS，需要支持更多的平台
+1. TTS 目前仅支持 macOS，windows，需要支持更多的平台
 2. 多平台的 Standalone executable
 3. 未对断线重连做支持 (等待 PyWebIO 支持)
 4. 狼人自爆操作

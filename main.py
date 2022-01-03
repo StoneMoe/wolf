@@ -1,5 +1,6 @@
 import asyncio
 import sys
+import socket
 from logging import getLogger, basicConfig
 
 from pywebio import start_server
@@ -16,6 +17,13 @@ basicConfig(stream=sys.stdout, format='%(asctime)s - %(name)s - %(levelname)s - 
 logger = getLogger('Wolf')
 logger.setLevel('DEBUG')
 
+#获取内网IP
+try: 
+    s = socket.socket(socket.AF_INET,socket.SOCK_DGRAM) 
+    s.connect(('8.8.8.8',80)) 
+    ip = s.getsockname()[0] 
+finally: 
+    s.close() 
 
 async def main():
     """狼人杀"""
@@ -158,4 +166,5 @@ async def main():
 
 
 if __name__ == '__main__':
+    print(f"狼人杀服务器启动成功！可以通过在浏览器内输入{ip}来加入游戏")
     start_server(main, debug=False, host='0.0.0.0', port=80, cdn=False)
