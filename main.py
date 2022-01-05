@@ -166,5 +166,8 @@ async def main():
 
 
 if __name__ == '__main__':
-    print(f"狼人杀服务器启动成功！可以通过在浏览器内输入{ip}来加入游戏")
+    if ip == None:
+        print("ip获取失败")
+    else:
+        print(f"狼人杀服务器启动成功！可以通过在浏览器内输入{ip}来加入游戏")
     start_server(main, debug=False, host='0.0.0.0', port=80, cdn=False)
