@@ -22,6 +22,8 @@ try:
     s = socket.socket(socket.AF_INET,socket.SOCK_DGRAM) 
     s.connect(('8.8.8.8',80)) 
     ip = s.getsockname()[0] 
+except TimeoutError:
+    del ip
 finally: 
     s.close() 
 
@@ -166,5 +168,8 @@ async def main():
 
 
 if __name__ == '__main__':
-    print(f"狼人杀服务器启动成功！可以通过在浏览器内输入{ip}来加入游戏")
-    start_server(main, debug=False, host='0.0.0.0', port=80, cdn=False)
+    if ip is None:
+        print("获取ip失败")
+    else:
+        print(f"狼人杀服务器启动成功！可以通过在浏览器内输入{ip}来加入游戏")
+        start_server(main, debug=False, host='0.0.0.0', port=80, cdn=False)
