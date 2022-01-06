@@ -10,7 +10,7 @@ from pywebio.session import defer_call, get_current_task_id
 from enums import WitchRule, GuardRule, Role, GameStage
 from models.room import Room
 from models.user import User
-from utils import add_cancel_button
+from utils import add_cancel_button, get_interface_ip
 
 basicConfig(stream=sys.stdout, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = getLogger('Wolf')
@@ -158,4 +158,5 @@ async def main():
 
 
 if __name__ == '__main__':
+    logger.info(f"狼人杀服务器启动成功！可以通过在浏览器内输入 http://{get_interface_ip()} 来加入游戏")
     start_server(main, debug=False, host='0.0.0.0', port=80, cdn=False)
