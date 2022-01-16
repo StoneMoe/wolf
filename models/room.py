@@ -30,6 +30,8 @@ class Room:
     round: int  # 轮次
     stage: Optional[GameStage]  # 游戏阶段
     waiting: bool  # 等待玩家操作
+    hunter_vote: bool #猎人是否被放逐
+    hunter_killed: bool #猎人被狼刀
     log: List[Tuple[Union[str, None], Union[str, LogCtrl]]]  # 广播消息源，(目标, 内容)
 
     # Internal
@@ -39,13 +41,24 @@ class Room:
         """单夜逻辑"""
         # 开始
         self.round += 1
+        if self.hunter_vote:
+            self.stage = GameStage.HUNTER_SHOOT
+            self.broadcast_msg('猎人请开枪', tts=True)
+            await self.wait_for_player()            
+            await asyncio.sleep(3)
+            self.hunter_vote = False
         self.broadcast_msg('天黑请闭眼', tts=True)
         await asyncio.sleep(3)
 
         # 狼人
         self.stage = GameStage.WOLF
         self.broadcast_msg('狼人请出现', tts=True)
-        await self.wait_for_player()
+        for user in self.players.values():
+            if user.status != PlayerStatus.DEAD and user.role == Role.WOLF and user.kill == False:
+                self.stage = GameStage.WOLF
+                user.send_msg('狼人请选择')
+                await self.wait_for_player()
+                await asyncio.sleep(1)
         self.broadcast_msg('狼人请闭眼', tts=True)
         await asyncio.sleep(3)
 
@@ -74,7 +87,7 @@ class Room:
             await asyncio.sleep(3)
 
         # 猎人
-        if Role.HUNTER in self.roles:
+        if Role.HUNTER in self.roles and not self.hunter_vote:
             self.stage = GameStage.HUNTER
             self.broadcast_msg('猎人请出现', tts=True)
             await self.wait_for_player()
@@ -125,9 +138,17 @@ class Room:
             self.broadcast_msg('等待投票')
             return
 
+    async def hunt_day_kill(self, nick):
+        self.players[nick].status = PlayerStatus.DEAD
+        self.check_result(is_vote_check=True)
+        self.broadcast_msg('玩家:{}被猎人带走'.format(nick), tts=True)
+
     async def vote_kill(self, nick):
         self.players[nick].status = PlayerStatus.DEAD
         self.check_result(is_vote_check=True)
+        self.broadcast_msg('玩家:{}被放逐, 或自爆'.format(nick), tts=True)
+        if self.players[nick].role == Role.HUNTER:
+            self.hunter_vote = True
         if self.started:
             self.enter_null_stage()
             await self.start_game()  # 下一夜
@@ -203,6 +224,12 @@ class Room:
     def list_pending_kill_players(self) -> list:
         return [user for user in self.players.values() if user.status == PlayerStatus.PENDING_DEAD]
 
+    def list_wolf_players(self) -> list:
+        return [user for user in self.players.values() if user.role == Role.WOLF]
+    
+    def list_dead_players(self) -> list:
+        return [user for user in self.players.values() if user.status == PlayerStatus.DEAD]
+
     def is_full(self) -> bool:
         return len(self.players) >= len(self.roles)
 
@@ -222,7 +249,7 @@ class Room:
         user.room = self
         user.start_syncer()  # will run later
 
-        players_status = f'人数 {len(self.players)}/{len(self.roles)}，房主是 {self.get_host()}'
+        players_status = f'人数 {len(self.players)}/{len(self.roles)}，房主是 {self.get_host()}, 玩家有: {[nick for nick in self.players]}'
         user.game_msg.append(players_status)
         self.broadcast_msg(players_status)
         logger.info(f'用户 "{user.nick}" 加入房间 "{self.id}"')
@@ -239,7 +266,7 @@ class Room:
             Global.remove_room(self.id)
             return
 
-        self.broadcast_msg(f'人数 {len(self.players)}/{len(self.roles)}，房主是 {self.get_host()}')
+        self.broadcast_msg(f'人数 {len(self.players)}/{len(self.roles)}，房主是 {self.get_host()}, 玩家有: {[nick for nick in self.players]}')
         logger.info(f'用户 "{user.nick}" 离开房间 "{self.id}"')
 
     def get_host(self):
@@ -292,6 +319,8 @@ class Room:
                 round=0,
                 stage=None,
                 waiting=False,
+                hunter_vote=False,
+                hunter_killed=False,
                 log=list(),
                 # Internal
                 logic_thread=None,
