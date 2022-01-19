@@ -31,6 +31,7 @@ class Room:
     stage: Optional[GameStage]  # 游戏阶段
     waiting: bool  # 等待玩家操作
     log: List[Tuple[Union[str, None], Union[str, LogCtrl]]]  # 广播消息源，(目标, 内容)
+    finishedCaptainChoose: bool
 
     # Internal
     logic_thread: Optional[TaskHandle]
@@ -47,7 +48,7 @@ class Room:
         self.broadcast_msg('狼人请出现', tts=True)
         await self.wait_for_player()
         self.broadcast_msg('狼人请闭眼', tts=True)
-        await asyncio.sleep(3)
+        await asyncio.sleep(5)
 
         # 预言家
         if Role.DETECTIVE in self.roles:
@@ -55,7 +56,7 @@ class Room:
             self.broadcast_msg('预言家请出现', tts=True)
             await self.wait_for_player()
             self.broadcast_msg('预言家请闭眼', tts=True)
-            await asyncio.sleep(3)
+            await asyncio.sleep(5)
 
         # 女巫
         if Role.WITCH in self.roles:
@@ -63,7 +64,7 @@ class Room:
             self.broadcast_msg('女巫请出现', tts=True)
             await self.wait_for_player()
             self.broadcast_msg('女巫请闭眼', tts=True)
-            await asyncio.sleep(3)
+            await asyncio.sleep(5)
 
         # 守卫
         if Role.GUARD in self.roles:
@@ -71,7 +72,7 @@ class Room:
             self.broadcast_msg('守卫请出现', tts=True)
             await self.wait_for_player()
             self.broadcast_msg('守卫请闭眼', tts=True)
-            await asyncio.sleep(3)
+            await asyncio.sleep(5)
 
         # 猎人
         if Role.HUNTER in self.roles:
@@ -79,7 +80,7 @@ class Room:
             self.broadcast_msg('猎人请出现', tts=True)
             await self.wait_for_player()
             self.broadcast_msg('猎人请闭眼', tts=True)
-            await asyncio.sleep(3)
+            await asyncio.sleep(5)
 
         # 检查结果
         self.check_result()
@@ -119,11 +120,15 @@ class Room:
             self.stop_game('好人胜利')
             return
 
-        if not is_vote_check:
+        if self.round == 1 and not self.finishedCaptainChoose:
             self.stage = GameStage.Day
-            self.broadcast_msg(f'天亮了，昨夜 {"无人" if not out_result else "，".join(out_result)} 出局', tts=True)
-            self.broadcast_msg('等待投票')
+            self.broadcast_msg('下面开始警长竞选')
             return
+
+        self.stage = GameStage.Day
+        self.broadcast_msg(f'天亮了，昨夜 {"无人" if not out_result else "，".join(out_result)} 出局', tts=True)
+        self.broadcast_msg('等待投票')
+        return
 
     async def vote_kill(self, nick):
         self.players[nick].status = PlayerStatus.DEAD
@@ -176,9 +181,9 @@ class Room:
                 # 守卫守护记录
                 if self.players[nick].role == Role.GUARD:
                     self.players[nick].skill['last_protect'] = None
-                self.players[nick].send_msg(f'你的身份是 "{self.players[nick].role}"')
+                self.players[nick].send_msg(f'你的身份是 "{self.players[nick].role}",请确认后息屏，闭眼。狼人将于15s后行动。')
 
-            await asyncio.sleep(5)
+            await asyncio.sleep(15)
 
         self.logic_thread = run_async(self.night_logic())
 
@@ -187,6 +192,7 @@ class Room:
         self.started = False
         self.roles_pool = copy(self.roles)
         self.round = 0
+        self.finishedCaptainChoose = False
         self.enter_null_stage()
         self.waiting = False
 
@@ -295,6 +301,7 @@ class Room:
                 log=list(),
                 # Internal
                 logic_thread=None,
+                finishedCaptainChoose=False,
             )
         )
 

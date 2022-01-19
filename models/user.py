@@ -147,7 +147,12 @@ class User:
 
     @player_action
     def detective_identify_player(self, nick):
-        self.send_msg(f'玩家 {nick} 的身份是 {self.room.players[nick].role}')
+        msgStr = f'玩家 {nick} 的身份是'
+        if self.room.players[nick].role in [Role.WOLF, Role.WOLF_KING]:
+            msgStr += '狼人'
+        else:
+            msgStr += '好人'
+        self.send_msg(msgStr)
 
     @player_action
     def witch_kill_player(self, nick):
