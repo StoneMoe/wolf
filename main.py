@@ -65,16 +65,27 @@ async def main():
         if current_user is room.get_host():
             if not room.started:
                 host_ops = [
-                    actions(name='host_op', buttons=['开始游戏'], help_text='你是房主')
+                    actions(name='host_op', buttons=['开始游戏'], help_text='你是房主'),
                 ]
             elif room.stage == GameStage.Day and room.round > 0:
-                host_ops = [
-                    actions(
-                        name='host_vote_op',
-                        buttons=[user.nick for user in room.list_alive_players()],
-                        help_text='你是房主，本轮需要选择出局玩家'
-                    )
-                ]
+                if room.finishedCaptainChoose:
+                    host_ops = [
+                        actions(
+                            name='host_vote_op',
+                            buttons=[user.nick for user in room.list_alive_players()],
+                            help_text='你是房主，本轮需要选择出局玩家'
+                        ),
+                        actions(name='host_forceEnd', buttons=['强制结束游戏'], help_text='你是房主'),
+                    ]
+                else:
+                    host_ops = [
+                        actions(
+                            name='finishedCaptainChoose',
+                            buttons=["竞选完毕"],
+                            help_text='竞选完毕后显示死亡信息'
+                        ),
+                        actions(name='host_forceEnd', buttons=['强制结束游戏'], help_text='你是房主'),
+                    ]
 
         # 玩家操作
         user_ops = []
@@ -155,6 +166,12 @@ async def main():
         # Guard logic
         if data.get('guard_team_op'):
             current_user.guard_protect_player(nick=data.get('guard_team_op'))
+
+        if data.get('host_forceEnd'):
+            room.stop_game("房主强制结束游戏")
+        if data.get('finishedCaptainChoose'):
+            room.finishedCaptainChoose = True
+            room.check_result(True)
 
 
 if __name__ == '__main__':

@@ -40,6 +40,7 @@ class Role(PlainEnum):
     WITCH = '女巫'  # 女巫
     GUARD = '守卫'  # 守卫
     HUNTER = '猎人'  # 猎人
+    NOOB = '白痴'  # 白痴
     CITIZEN = '平民'  # 平民
 
     @classmethod
@@ -79,6 +80,7 @@ class Role(PlainEnum):
             '女巫': cls.WITCH,
             '守卫': cls.GUARD,
             '猎人': cls.HUNTER,
+            '白痴': cls.NOOB,
         }
 
     @classmethod
