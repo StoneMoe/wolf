@@ -122,7 +122,7 @@ class Room:
 
         if self.round == 1 and not self.finishedCaptainChoose:
             self.stage = GameStage.Day
-            self.broadcast_msg('下面开始警长竞选')
+            self.broadcast_msg('下面开始警长竞选,请保持息屏',tts=True)
             return
 
         self.stage = GameStage.Day
