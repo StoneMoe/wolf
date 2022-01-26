@@ -12,6 +12,9 @@ from models.room import Room
 from models.user import User
 from utils import add_cancel_button, get_interface_ip
 
+import random
+import datetime
+
 basicConfig(stream=sys.stdout, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = getLogger('Wolf')
 logger.setLevel('DEBUG')
@@ -76,6 +79,7 @@ async def main():
                             help_text='你是房主，本轮需要选择出局玩家'
                         ),
                         actions(name='host_forceEnd', buttons=['强制结束游戏'], help_text='你是房主'),
+                        actions(name='randVec', buttons=['随机矢量'], help_text='生成一个随机的发言位置和方向'),
                     ]
                 else:
                     host_ops = [
@@ -85,6 +89,7 @@ async def main():
                             help_text='竞选完毕后显示死亡信息'
                         ),
                         actions(name='host_forceEnd', buttons=['强制结束游戏'], help_text='你是房主'),
+                        actions(name='randVec', buttons=['随机矢量'], help_text='生成一个随机的发言位置和方向'),
                     ]
 
         # 玩家操作
@@ -172,6 +177,11 @@ async def main():
         if data.get('finishedCaptainChoose'):
             room.finishedCaptainChoose = True
             room.check_result(True)
+        if data.get('randVec'):
+            random.seed()
+            r = random.randint(1, len(room.roles))
+            lr = int(datetime.datetime.now().timestamp()) & 0x1
+            room.broadcast_msg("从" + str(r) + "号玩家开始向" + (lr == 0x1 and '顺时针' or '逆时针') + '方向发言')
 
 
 if __name__ == '__main__':
