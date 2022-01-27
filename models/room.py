@@ -265,8 +265,8 @@ class Room:
 
     def broadcast_msg(self, text: str, tts=False):
         """广播一条消息到所有房间内玩家"""
-        if tts:
-            say(text)
+        #if tts:
+            #say(text)
 
         self.log.append((Config.SYS_NICK, text))
 
