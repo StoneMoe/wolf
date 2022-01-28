@@ -226,6 +226,9 @@ class User:
         # 反注册
         Global.users.pop(user.nick)
         # 从房间移除用户
-        if user.room:
-            user.room.remove_player(user)
-        logger.info(f'用户 "{user.nick}" 注销')
+        if user.room and user.room.started:
+            user.room.broadcast_msg(f'用户{user.nick}开始的游戏内断线')
+            logger.info(f'用户{user.nick}开始的游戏内断线')
+        else:
+            logger.info(f'用户 "{user.nick}" 注销')
+        user.room.remove_player(user)

@@ -187,7 +187,7 @@ class Room:
                 # 守卫守护记录
                 if self.players[nick].role == Role.GUARD:
                     self.players[nick].skill['last_protect'] = None
-                self.players[nick].send_msg(f'你的身份是 "{self.players[nick].role}",请确认后息屏，闭眼。狼人将于15s后行动。')
+                self.players[nick].send_msg(f'你的身份是 "{self.players[nick].role}",请确认后保持屏幕激活，闭眼。狼人将于15s后行动。')
 
             await asyncio.sleep(15)
 
