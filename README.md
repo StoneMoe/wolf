@@ -1,5 +1,5 @@
-# Wolf-X6FIX
-狼人杀面杀法官系统-X6FIX
+# Wolf-FIX
+狼人杀面杀法官系统-FIX
 
 Preview
 --
