@@ -26,6 +26,7 @@ class PlayerStatus(PlainEnum):
 
 class GameStage(Enum):
     Day = 'Day'
+    HUNTER_SHOOT = '猎人开枪'
     WOLF = '狼人'
     DETECTIVE = '预言家'
     WITCH = '女巫'

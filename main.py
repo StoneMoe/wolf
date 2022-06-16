@@ -7,7 +7,7 @@ from pywebio.input import *
 from pywebio.output import *
 from pywebio.session import defer_call, get_current_task_id
 
-from enums import WitchRule, GuardRule, Role, GameStage
+from enums import WitchRule, GuardRule, Role, GameStage, PlayerStatus
 from models.room import Room
 from models.user import User
 from utils import add_cancel_button, get_interface_ip
@@ -63,7 +63,8 @@ async def main():
 
     while True:
         await asyncio.sleep(0.2)
-        # 非夜晚房主操作
+
+        # 日间房主操作
         host_ops = []
         if current_user is room.get_host():
             if not room.started:
@@ -71,17 +72,7 @@ async def main():
                     actions(name='host_op', buttons=['开始游戏'], help_text='你是房主'),
                 ]
             elif room.stage == GameStage.Day and room.round > 0:
-                if room.finishedCaptainChoose:
-                    host_ops = [
-                        actions(
-                            name='host_vote_op',
-                            buttons=[user.nick for user in room.list_alive_players()],
-                            help_text='你是房主，本轮需要选择出局玩家'
-                        ),
-                        actions(name='host_forceEnd', buttons=['强制结束游戏'], help_text='你是房主'),
-                        actions(name='randVec', buttons=['随机矢量'], help_text='生成一个随机的发言位置和方向'),
-                    ]
-                else:
+                if not room.finishedCaptainChoose:
                     host_ops = [
                         actions(
                             name='finishedCaptainChoose',
@@ -91,8 +82,36 @@ async def main():
                         actions(name='host_forceEnd', buttons=['强制结束游戏'], help_text='你是房主'),
                         actions(name='randVec', buttons=['随机矢量'], help_text='生成一个随机的发言位置和方向'),
                     ]
+                else:
+                    hunter_dead = False
+                    for dead_user in room.list_dead_players():
+                        if dead_user.role == Role.HUNTER and room.hunter_killed:
+                            hunter_dead = True
+                            room.hunter_killed = False
+                            break
 
-        # 玩家操作
+                    if hunter_dead:
+                        host_ops = [
+                            actions(
+                                name='host_hunt_kill_op',
+                                buttons=add_cancel_button([user.nick for user in room.list_alive_players()]),
+                                help_text='你是房主，选择猎人带走的玩家'
+                            )
+                        ]
+                    else:
+                        host_ops = [
+                            actions(
+                                name='host_vote_op',
+                                buttons=[user.nick for user in room.list_alive_players()],
+                                help_text='你是房主，本轮需要选择出局玩家'
+                            )
+                        ]
+                    host_ops.extends([
+                        actions(name='host_forceEnd', buttons=['强制结束游戏'], help_text='你是房主'),
+                        actions(name='randVec', buttons=['随机矢量'], help_text='生成一个随机的发言位置和方向'),
+                    ])
+
+        # 夜间玩家操作
         user_ops = []
         if room.started:
             if room.stage == GameStage.WOLF and current_user.should_act():
@@ -103,6 +122,7 @@ async def main():
                         help_text='狼人阵营，请选择要击杀的对象。'
                     )
                 ]
+                current_user.send_msg(f'狼人阵营为 {room.list_wolf_players()}')
             if room.stage == GameStage.DETECTIVE and current_user.should_act():
                 user_ops = [
                     actions(
@@ -112,19 +132,29 @@ async def main():
                     )
                 ]
             if room.stage == GameStage.WITCH and current_user.should_act():
-                if current_user.witch_has_heal():
+                if current_user.witch_has_heal() and current_user.witch_has_poison():
                     current_user.send_msg(f'昨晚被杀的是 {room.list_pending_kill_players()}')
-                else:
+                    user_ops = [
+                        radio(name='witch_mode', options=['解药', '毒药'], required=True, inline=True),
+                        actions(
+                            name='witch_team_op',
+                            buttons=add_cancel_button([user.nick for user in room.list_alive_players()]),
+                            help_text='女巫，请选择你的操作。'
+                        )
+                    ]
+                elif not current_user.witch_has_heal() and current_user.witch_has_poison():
                     current_user.send_msg('你已经没有解药了')
+                    user_ops = [
+                        radio(name='witch_mode', options=['毒药'], required=True, inline=True),
+                        actions(
+                            name='witch_team_op',
+                            buttons=add_cancel_button([user.nick for user in room.list_alive_players()]),
+                            help_text='女巫，请选择你的操作。'
+                        )
+                    ]
+                else:
+                    current_user.witch_no_do()
 
-                user_ops = [
-                    radio(name='witch_mode', options=['解药', '毒药'], required=True, inline=True),
-                    actions(
-                        name='witch_team_op',
-                        buttons=add_cancel_button([user.nick for user in room.list_alive_players()]),
-                        help_text='女巫，请选择你的操作。'
-                    )
-                ]
             if room.stage == GameStage.GUARD and current_user.should_act():
                 user_ops = [
                     actions(
@@ -133,16 +163,29 @@ async def main():
                         help_text='守卫，请选择你的操作。'
                     )
                 ]
-            if room.stage == GameStage.HUNTER and current_user.should_act():
+            if room.stage == GameStage.HUNTER and current_user.should_act() and not room.hunter_vote:  
                 current_user.hunter_gun_status()
+
+            if room.stage == GameStage.HUNTER and not current_user.should_act() and current_user.role == Role.HUNTER:
+                current_user.send_msg('猎人已经开枪，无需操作')
+                room.waiting = False
+                room.enter_null_stage()
+
+            if room.stage == GameStage.HUNTER_SHOOT and current_user.should_act():
+                user_ops = [
+                    actions(
+                        name='hunter_team_op',
+                        buttons=add_cancel_button([user.nick for user in room.list_alive_players()]),
+                        help_text='选择你要开枪带走的玩家'
+                    )
+                ]
 
         ops = host_ops + user_ops
         if not ops:
             continue
 
         # UI
-        if host_ops + user_ops:
-            current_user.input_blocking = True
+        current_user.input_blocking = True
         data = await input_group('操作', inputs=host_ops + user_ops, cancelable=True)
         current_user.input_blocking = False
 
@@ -156,6 +199,11 @@ async def main():
             await room.start_game()
         if data.get('host_vote_op'):
             await room.vote_kill(data.get('host_vote_op'))
+        if data.get('host_hunt_kill_op'):
+            await room.hunt_day_kill(data.get('host_hunt_kill_op'))         
+        # Hunter logic     
+        if data.get('hunter_team_op'):
+            current_user.hunt_kill(data.get('hunter_team_op'))            
         # Wolf logic
         if data.get('wolf_team_op'):
             current_user.wolf_kill_player(nick=data.get('wolf_team_op'))

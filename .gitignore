@@ -1,4 +1,5 @@
 .idea/
 scripts/
 **/__pycache__/
+venv/
 .DS_Store
