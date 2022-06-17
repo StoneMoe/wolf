@@ -18,7 +18,7 @@ class PlainEnum(Enum):
 class PlayerStatus(PlainEnum):
     ALIVE = '存活'
     DEAD = '出局'
-    PENDING_DEAD = '被狼人/女巫/守救冲突杀害'
+    PENDING_DEAD = '被狼人杀害/守救冲突死亡'
     PENDING_HEAL = '被女巫解救'
     PENDING_POISON = '被女巫毒害'
     PENDING_GUARD = '被守卫守护'

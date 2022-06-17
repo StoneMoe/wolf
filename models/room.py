@@ -30,9 +30,9 @@ class Room:
     round: int  # 轮次
     stage: Optional[GameStage]  # 游戏阶段
     waiting: bool  # 等待玩家操作
-    hunter_vote: bool  # 猎人是否被放逐
-    hunter_killed: bool  # 猎人被狼刀
-    finishedCaptainChoose: bool  # 是否完成了警长竞选
+    hunter_voted_off: bool  # 猎人在最近一次投票中是否被放逐
+    hunter_killed_by_wolf: bool  # 猎人被狼刀
+    captain_elected: bool  # 是否完成了警长竞选
     log: List[Tuple[Union[str, None], Union[str, LogCtrl]]]  # 广播消息源，(目标, 内容)
 
     # Internal
@@ -42,12 +42,13 @@ class Room:
         """单夜逻辑"""
         # 开始
         self.round += 1
-        if self.hunter_vote:
+        if self.hunter_voted_off:
             self.stage = GameStage.HUNTER_SHOOT
             self.broadcast_msg('猎人请开枪', tts=True)
-            await self.wait_for_player()            
-            await asyncio.sleep(3)
-            self.hunter_vote = False
+            await self.wait_for_player()
+            await asyncio.sleep(5)
+            self.hunter_voted_off = False
+
         self.broadcast_msg('天黑请闭眼', tts=True)
         await asyncio.sleep(3)
 
@@ -88,7 +89,7 @@ class Room:
             await asyncio.sleep(5)
 
         # 猎人
-        if Role.HUNTER in self.roles and not self.hunter_vote:
+        if Role.HUNTER in self.roles and not self.hunter_voted_off:
             self.stage = GameStage.HUNTER
             self.broadcast_msg('猎人请出现', tts=True)
             await self.wait_for_player()
@@ -133,7 +134,7 @@ class Room:
             self.stop_game('好人胜利')
             return
 
-        if self.round == 1 and not self.finishedCaptainChoose:
+        if self.round == 1 and not self.captain_elected:
             self.stage = GameStage.Day
             self.broadcast_msg('-----滚动遮挡信息-----')
             self.broadcast_msg('-----滚动遮挡信息-----')
@@ -141,7 +142,7 @@ class Room:
             self.broadcast_msg('-----滚动遮挡信息-----')
             self.broadcast_msg('-----滚动遮挡信息-----')
             self.broadcast_msg('-----滚动遮挡信息-----')
-            self.broadcast_msg('下面开始警长竞选',tts=True)
+            self.broadcast_msg('下面开始警长竞选', tts=True)
             return
 
         self.stage = GameStage.Day
@@ -152,14 +153,14 @@ class Room:
     async def hunt_day_kill(self, nick):
         self.players[nick].status = PlayerStatus.DEAD
         self.check_result(is_vote_check=True)
-        self.broadcast_msg('玩家:{}被猎人带走'.format(nick), tts=True)
+        self.broadcast_msg(f'玩家 "{nick}" 被猎人带走', tts=True)
 
-    async def vote_kill(self, nick):
+    async def vote_kill(self, nick, reason='放逐'):
         self.players[nick].status = PlayerStatus.DEAD
         self.check_result(is_vote_check=True)
-        self.broadcast_msg('玩家:{}被放逐, 或自爆'.format(nick), tts=True)
+        self.broadcast_msg(f'玩家 "{nick}" 被{reason}', tts=True)
         if self.players[nick].role == Role.HUNTER:
-            self.hunter_vote = True
+            self.hunter_voted_off = True
         if self.started:
             self.enter_null_stage()
             await self.start_game()  # 下一夜
@@ -208,18 +209,18 @@ class Room:
                 # 守卫守护记录
                 if self.players[nick].role == Role.GUARD:
                     self.players[nick].skill['last_protect'] = None
-                self.players[nick].send_msg(f'你的身份是 "{self.players[nick].role}",请确认后保持屏幕激活，闭眼。狼人将于15s后行动。')
+                self.players[nick].send_msg(f'你的身份是 "{self.players[nick].role}"。请保持屏幕常亮，距天黑还有15秒。')
 
             await asyncio.sleep(15)
 
         self.logic_thread = run_async(self.night_logic())
 
-    def stop_game(self, reason=''):
+    def stop_game(self, reason):
         """结束游戏"""
         self.started = False
         self.roles_pool = copy(self.roles)
         self.round = 0
-        self.finishedCaptainChoose = False
+        self.captain_elected = False
         self.enter_null_stage()
         self.waiting = False
 
@@ -237,8 +238,8 @@ class Room:
         return [user for user in self.players.values() if user.status == PlayerStatus.PENDING_DEAD]
 
     def list_wolf_players(self) -> list:
-        return [user for user in self.players.values() if user.role == Role.WOLF]
-    
+        return [user for user in self.players.values() if user.role in [Role.WOLF, Role.WOLF_KING]]
+
     def list_dead_players(self) -> list:
         return [user for user in self.players.values() if user.status == PlayerStatus.DEAD]
 
@@ -261,10 +262,10 @@ class Room:
         user.room = self
         user.start_syncer()  # will run later
 
-        players_status = f'人数 {len(self.players)}/{len(self.roles)}，房主是 {self.get_host()}, 玩家有: {[nick for nick in self.players]}'
-        user.game_msg.append(players_status)
-        self.broadcast_msg(players_status)
-        logger.info(f'用户 "{user.nick}" 加入房间 "{self.id}"')
+        msg = self.players_status()
+        user.game_msg.append(msg)
+        self.broadcast_msg(msg)
+        logger.info(f'用户 "{user}" 加入房间 "{self.id}"')
 
     def remove_player(self, user: 'User'):
         """将用户从房间移除"""
@@ -278,8 +279,8 @@ class Room:
             Global.remove_room(self.id)
             return
 
-        self.broadcast_msg(f'人数 {len(self.players)}/{len(self.roles)}，房主是 {self.get_host()}, 玩家有: {[nick for nick in self.players]}')
-        logger.info(f'用户 "{user.nick}" 离开房间 "{self.id}"')
+        self.broadcast_msg(self.players_status())
+        logger.info(f'用户 "{user}" 离开房间 "{self.id}"')
 
     def get_host(self):
         if not self.players:
@@ -292,8 +293,8 @@ class Room:
 
     def broadcast_msg(self, text: str, tts=False):
         """广播一条消息到所有房间内玩家"""
-        #if tts:
-            #say(text)
+        if tts:
+            say(text)
 
         self.log.append((Config.SYS_NICK, text))
 
@@ -301,10 +302,15 @@ class Room:
         """广播特殊的客户端控制消息"""
         self.log.append((None, ctrl_type))
 
-    def desc(self):
+    def desc(self) -> str:
         return f'房间号 {self.id}，' \
                f'需要玩家 {len(self.roles)} 人，' \
                f'人员配置：{dict(Counter(self.roles))}'
+
+    def players_status(self) -> str:
+        return f'人数 {len(self.players)}/{len(self.roles)}，' \
+               f'房主：{self.get_host()}, ' \
+               f'玩家：{self.players}'
 
     @classmethod
     def alloc(cls, room_setting) -> 'Room':
@@ -331,9 +337,9 @@ class Room:
                 round=0,
                 stage=None,
                 waiting=False,
-                hunter_vote=False,
-                hunter_killed=False,
-                finishedCaptainChoose=False,
+                hunter_voted_off=False,
+                hunter_killed_by_wolf=False,
+                captain_elected=False,
                 log=list(),
                 # Internal
                 logic_thread=None,

@@ -22,7 +22,7 @@ logger.setLevel('DEBUG')
 
 async def main():
     """狼人杀"""
-    put_markdown("## 狼人杀法官")
+    put_markdown('## 狼人杀法官')
 
     current_user = User.alloc(
         await input('请输入你的昵称',
@@ -72,22 +72,20 @@ async def main():
                     actions(name='host_op', buttons=['开始游戏'], help_text='你是房主'),
                 ]
             elif room.stage == GameStage.Day and room.round > 0:
-                if not room.finishedCaptainChoose:
+                if not room.captain_elected:
                     host_ops = [
                         actions(
-                            name='finishedCaptainChoose',
-                            buttons=["竞选完毕"],
+                            name='captain_elect',
+                            buttons=['竞选完毕'],
                             help_text='竞选完毕后显示死亡信息'
                         ),
-                        actions(name='host_forceEnd', buttons=['强制结束游戏'], help_text='你是房主'),
-                        actions(name='randVec', buttons=['随机矢量'], help_text='生成一个随机的发言位置和方向'),
                     ]
                 else:
                     hunter_dead = False
                     for dead_user in room.list_dead_players():
-                        if dead_user.role == Role.HUNTER and room.hunter_killed:
+                        if dead_user.role == Role.HUNTER and room.hunter_killed_by_wolf:
                             hunter_dead = True
-                            room.hunter_killed = False
+                            room.hunter_killed_by_wolf = False
                             break
 
                     if hunter_dead:
@@ -106,15 +104,16 @@ async def main():
                                 help_text='你是房主，本轮需要选择出局玩家'
                             )
                         ]
-                    host_ops.extends([
-                        actions(name='host_forceEnd', buttons=['强制结束游戏'], help_text='你是房主'),
-                        actions(name='randVec', buttons=['随机矢量'], help_text='生成一个随机的发言位置和方向'),
-                    ])
+                host_ops.extend([
+                    actions(name='host_force_stop', buttons=['强制结束游戏'], help_text='你是房主'),
+                    actions(name='rand_vec', buttons=['随机矢量'], help_text='生成一个随机的发言位置和方向'),
+                ])
 
         # 夜间玩家操作
         user_ops = []
         if room.started:
             if room.stage == GameStage.WOLF and current_user.should_act():
+                current_user.send_msg(f'狼人阵营为 {room.list_wolf_players()}')
                 user_ops = [
                     actions(
                         name='wolf_team_op',
@@ -122,7 +121,6 @@ async def main():
                         help_text='狼人阵营，请选择要击杀的对象。'
                     )
                 ]
-                current_user.send_msg(f'狼人阵营为 {room.list_wolf_players()}')
             if room.stage == GameStage.DETECTIVE and current_user.should_act():
                 user_ops = [
                     actions(
@@ -132,20 +130,16 @@ async def main():
                     )
                 ]
             if room.stage == GameStage.WITCH and current_user.should_act():
-                if current_user.witch_has_heal() and current_user.witch_has_poison():
+                witch_opts = []
+                if current_user.witch_has_heal():
                     current_user.send_msg(f'昨晚被杀的是 {room.list_pending_kill_players()}')
+                    witch_opts.append('解药')
+                if current_user.witch_has_poison():
+                    witch_opts.append('毒药')
+
+                if witch_opts:
                     user_ops = [
-                        radio(name='witch_mode', options=['解药', '毒药'], required=True, inline=True),
-                        actions(
-                            name='witch_team_op',
-                            buttons=add_cancel_button([user.nick for user in room.list_alive_players()]),
-                            help_text='女巫，请选择你的操作。'
-                        )
-                    ]
-                elif not current_user.witch_has_heal() and current_user.witch_has_poison():
-                    current_user.send_msg('你已经没有解药了')
-                    user_ops = [
-                        radio(name='witch_mode', options=['毒药'], required=True, inline=True),
+                        radio(name='witch_mode', options=witch_opts, required=True, inline=True),
                         actions(
                             name='witch_team_op',
                             buttons=add_cancel_button([user.nick for user in room.list_alive_players()]),
@@ -153,8 +147,9 @@ async def main():
                         )
                     ]
                 else:
-                    current_user.witch_no_do()
-
+                    current_user.send_msg('你已经没有任何药水了')
+                    await asyncio.sleep(3)
+                    current_user.skip()
             if room.stage == GameStage.GUARD and current_user.should_act():
                 user_ops = [
                     actions(
@@ -163,8 +158,11 @@ async def main():
                         help_text='守卫，请选择你的操作。'
                     )
                 ]
-            if room.stage == GameStage.HUNTER and current_user.should_act() and not room.hunter_vote:  
-                current_user.hunter_gun_status()
+            if room.stage == GameStage.HUNTER and current_user.should_act() and not room.hunter_voted_off:
+                current_user.send_msg(
+                    f'你的开枪状态为...'
+                    f'{"可以开枪" if current_user.status != PlayerStatus.PENDING_POISON else "无法开枪"}'
+                )
 
             if room.stage == GameStage.HUNTER and not current_user.should_act() and current_user.role == Role.HUNTER:
                 current_user.send_msg('猎人已经开枪，无需操作')
@@ -200,10 +198,21 @@ async def main():
         if data.get('host_vote_op'):
             await room.vote_kill(data.get('host_vote_op'))
         if data.get('host_hunt_kill_op'):
-            await room.hunt_day_kill(data.get('host_hunt_kill_op'))         
+            await room.hunt_day_kill(data.get('host_hunt_kill_op'))
+        if data.get('host_force_stop'):
+            room.stop_game('房主强制结束游戏')
+        if data.get('captain_elect'):
+            room.captain_elected = True
+            room.check_result(is_vote_check=True)
+        if data.get('rand_vec'):
+            random.seed()
+            r = random.randint(1, len(room.roles))
+            lr = int(datetime.datetime.now().timestamp()) & 0x1
+            room.broadcast_msg(f'从 {r} 号玩家开始向 {"顺时针" if lr == 0x1 else "逆时针"} 方向发言')
+
         # Hunter logic     
         if data.get('hunter_team_op'):
-            current_user.hunt_kill(data.get('hunter_team_op'))            
+            current_user.hunter_kill(data.get('hunter_team_op'))
         # Wolf logic
         if data.get('wolf_team_op'):
             current_user.wolf_kill_player(nick=data.get('wolf_team_op'))
@@ -220,18 +229,7 @@ async def main():
         if data.get('guard_team_op'):
             current_user.guard_protect_player(nick=data.get('guard_team_op'))
 
-        if data.get('host_forceEnd'):
-            room.stop_game("房主强制结束游戏")
-        if data.get('finishedCaptainChoose'):
-            room.finishedCaptainChoose = True
-            room.check_result(True)
-        if data.get('randVec'):
-            random.seed()
-            r = random.randint(1, len(room.roles))
-            lr = int(datetime.datetime.now().timestamp()) & 0x1
-            room.broadcast_msg("从" + str(r) + "号玩家开始向" + (lr == 0x1 and '顺时针' or '逆时针') + '方向发言')
-
 
 if __name__ == '__main__':
-    logger.info(f"狼人杀服务器启动成功！可以通过在浏览器内输入 http://{get_interface_ip()} 来加入游戏")
+    logger.info(f'狼人杀服务器启动成功！可以通过在浏览器内输入 http://{get_interface_ip()} 来加入游戏')
     start_server(main, debug=False, host='0.0.0.0', port=80, cdn=False)

@@ -1,6 +1,5 @@
 import asyncio
 from dataclasses import dataclass
-from models import room
 from typing import Optional, TYPE_CHECKING, Any
 
 from pywebio import run_async
@@ -54,7 +53,7 @@ class User:
     # Game
     room: Optional['Room']  # 所在房间
     role: Optional[Role]  # 角色
-    kill: Any # 狼人杀人标记
+    kill: int  # 狼人杀人标记
     skill: dict  # 角色技能
     status: Optional[PlayerStatus]  # 玩家状态
 
@@ -129,10 +128,12 @@ class User:
             GameStage.DETECTIVE: [Role.DETECTIVE],
             GameStage.WOLF: [Role.WOLF, Role.WOLF_KING],
         }
-        if self.room.hunter_vote:
-            return self.role in stage_map.get(self.room.stage, []) and self.status != PlayerStatus.DEAD or self.role == Role.HUNTER
+        if self.room.hunter_voted_off:
+            return self.role in stage_map.get(self.room.stage,
+                                              []) and self.status != PlayerStatus.DEAD or self.role == Role.HUNTER
         else:
-            return self.role in stage_map.get(self.room.stage, []) and self.status != PlayerStatus.DEAD and self.kill == 0
+            return self.role in stage_map.get(self.room.stage,
+                                              []) and self.status != PlayerStatus.DEAD and self.kill == 0
 
     def witch_has_heal(self):
         """女巫持有解药"""
@@ -157,7 +158,6 @@ class User:
                 user.send_msg(f'狼人 [{self.nick}] 选择击杀的玩家是 [{nick}]')
         self.check_wolf_vote()
 
-    @player_action
     def check_wolf_vote(self):
         self.room.players[self.nick].kill = self.room.players[self.nick].kill + 1
         i = 0
@@ -168,34 +168,30 @@ class User:
                 if user.kill != 0:
                     j = j + 1
         if i == j:
-            maxKill = 0
-            maxUser = None
+            max_kill = 0
+            max_user = None
             for _, user in self.room.players.items():
                 if user.role != Role.WOLF and user.status == PlayerStatus.ALIVE:
-                    if user.kill > maxKill:
-                        maxKill = user.kill
-                        maxUser = user
-            if not maxUser:
-                self.room.players[maxUser.nick].status = PlayerStatus.PENDING_DEAD
-                if self.room.players[maxUser.nick].role == Role.HUNTER:
-                    self.room.hunter_killed = True
+                    if user.kill > max_kill:
+                        max_kill = user.kill
+                        max_user = user
+            if not max_user:
+                self.room.players[max_user.nick].status = PlayerStatus.PENDING_DEAD
+                if self.room.players[max_user.nick].role == Role.HUNTER:
+                    self.room.hunter_killed_by_wolf = True
             for _, user in self.room.players.items():
                 user.kill = 0
 
     @player_action
-    def hunt_kill(self, nick):
+    def hunter_kill(self, nick):
         self.room.players[nick].status = PlayerStatus.DEAD
         for _, user in self.room.players.items():
-            user.send_msg('玩家:{}被猎人带走'.format(nick))                
+            user.send_msg(f'玩家 "{nick}" 被猎人带走')
 
     @player_action
     def detective_identify_player(self, nick):
-        msgStr = f'玩家 {nick} 的身份是'
-        if self.room.players[nick].role in [Role.WOLF, Role.WOLF_KING]:
-            msgStr += '狼人'
-        else:
-            msgStr += '好人'
-        self.send_msg(msgStr)
+        identity = '狼人' if self.room.players[nick].role in [Role.WOLF, Role.WOLF_KING] else '好人'
+        self.send_msg(f'玩家 "{nick}" 的身份是 {identity}')
 
     @player_action
     def witch_kill_player(self, nick):
@@ -235,17 +231,6 @@ class User:
 
         self.room.players[nick].status = PlayerStatus.PENDING_GUARD
 
-    @player_action
-    def hunter_gun_status(self):
-        self.send_msg(
-            f'你的开枪状态为...'
-            f'{"可以开枪" if self.status != PlayerStatus.PENDING_POISON else "无法开枪"}'
-        )
-
-    @player_action
-    def witch_no_do(self):
-        self.send_msg('解药已使用，毒药已使用，无需行动！')
-
     # 登录
     @classmethod
     def validate_nick(cls, nick) -> Optional[str]:
@@ -277,8 +262,8 @@ class User:
         Global.users.pop(user.nick)
         # 从房间移除用户
         if user.room and user.room.started:
-            user.room.broadcast_msg(f'用户{user.nick}开始的游戏内断线')
-            logger.info(f'用户{user.nick}开始的游戏内断线')
+            user.room.broadcast_msg(f'用户 "{user.nick}" 从游戏中断开')
+            logger.info(f'用户 "{user.nick}" 从游戏中断开')
         else:
             logger.info(f'用户 "{user.nick}" 注销')
         user.room.remove_player(user)
